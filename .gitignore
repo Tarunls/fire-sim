@@ -9,12 +9,15 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
+node_modules
+__pycache__
+backend/__pycache__
 # testing
 /coverage
 
 # next.js
 /.next/
+.next
 /out/
 
 # production
