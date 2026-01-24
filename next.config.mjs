@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   // We need this to allow Mapbox to load its worker correctly
   webpack: (config) => {
     config.externals.push({
