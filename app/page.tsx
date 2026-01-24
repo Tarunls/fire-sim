@@ -1,11 +1,10 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Map, { NavigationControl, ScaleControl, Source, Layer } from 'react-map-gl';
-import { Terminal, Wind, AlertTriangle, Play, Loader2 } from 'lucide-react';
+import { Terminal, Wind, AlertTriangle, Play, Loader2, Activity, Zap, ChevronRight, Thermometer, Droplets, Mountain } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-// SANITIZE TOKEN
 const RAW_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 const MAPBOX_TOKEN = RAW_TOKEN.replace(/"/g, ''); 
 
@@ -14,42 +13,32 @@ export default function IncidentCommander() {
     windSpeed: 50,
     windDir: 'N',
     moisture: 10,
+    humidity: 25,     // NEW
+    temperature: 85,  // NEW
+    slope: 15,        // NEW
   });
 
   const [aiPrompt, setAiPrompt] = useState('');
-
 
   const heatmapLayer: any = {
     id: 'fire-heat',
     type: 'heatmap',
     paint: {
-      // 1. INTENSITY: Use the 'intensity' prop from Python (0.0 to 1.0)
       'heatmap-weight': ['get', 'intensity'],
-
-      // 2. COLOR RAMP: The "Inferno" Palette
       'heatmap-color': [
         'interpolate', ['linear'], ['heatmap-density'],
-        0, 'rgba(0,0,0,0)',       // Transparent
-        0.1, 'rgba(50,0,0,0.5)',  // Smoke (Dark edges)
-        0.3, 'rgb(100,0,0)',      // Charred/Deep Red
-        0.5, 'rgb(200,40,0)',     // Active Fire (Red-Orange)
-        0.8, 'rgb(255,140,0)',    // Intense Fire (Bright Orange)
-        1,   'rgb(255,255,200)'   // The Core (White-Hot)
+        0, 'rgba(0,0,0,0)',
+        0.1, 'rgba(50,0,0,0.5)',
+        0.3, 'rgb(100,0,0)',
+        0.5, 'rgb(200,40,0)',
+        0.8, 'rgb(255,140,0)',
+        1,   'rgb(255,255,200)'
       ],
-
-      // 3. RADIUS: Smooths the dots into a blob
-      'heatmap-radius': [
-        'interpolate', ['linear'], ['zoom'],
-        0, 2,  // Zoomed out: small dots
-        9, 20, // Zoomed in: large merging blobs
-        15, 50 // Ultra zoom: massive spread
-      ],
-      
+      'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 2, 9, 20, 15, 50],
       'heatmap-opacity': 0.85
     }
   };
 
-  // --- BACKEND CONNECTIONS ---
   const mutation = useMutation({
     mutationFn: async (params: typeof simParams) => {
       const res = await fetch('http://127.0.0.1:8000/simulate', {
@@ -58,7 +47,7 @@ export default function IncidentCommander() {
         body: JSON.stringify(params),
       });
       return res.json();
-    }
+    },
   });
 
   const aiMutation = useMutation({
@@ -68,142 +57,119 @@ export default function IncidentCommander() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: text })
       });
+      if (!res.ok) throw new Error("AI Uplink Failed");
       return res.json();
+    },
+    onSuccess: (data) => {
+      // Update the sliders with the AI-parsed values
+      setSimParams(data.params);
+      // Auto-trigger the simulation with new parameters
+      mutation.mutate(data.params);
+      setAiPrompt('');
     }
   });
 
   const handleAICommand = () => {
-     aiMutation.mutate(aiPrompt, {
-        onSuccess: (data) => {
-            setSimParams(data.params);
-            mutation.mutate(data.params);
-            setAiPrompt('');
-        }
-     });
+    if (!aiPrompt.trim()) return;
+    aiMutation.mutate(aiPrompt);
   };
 
-  // --- VISUALIZATION ---
-  const fireData = {
+  const fireData = useMemo(() => ({
     type: 'FeatureCollection',
     features: mutation.data?.data.map((point: any) => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [point.lon, point.lat] },
       properties: { intensity: point.intensity }
     })) || []
-  };
-
-  const circleLayer: any = {
-    id: 'fire-points',
-    type: 'circle',
-    paint: {
-      'circle-radius': 8,
-      'circle-color': '#00FF00', // NEON GREEN
-      'circle-opacity': 0.8,
-      'circle-stroke-width': 1,
-      'circle-stroke-color': '#fff'
-    }
-  };
+  }), [mutation.data]);
 
   return (
-    // ⚠️ THE FIX: CSS GRID LAYOUT (320px Sidebar | Remainder Map)
-    <main 
-      style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '320px 1fr', 
-        height: '100vh', 
-        width: '100vw', 
-        overflow: 'hidden',
-        backgroundColor: '#0f172a' 
-      }}
-    >
-      
-      {/* 1. SIDEBAR (Left Column) */}
-      <aside className="bg-slate-950 border-r border-slate-800 flex flex-col shadow-xl z-20 h-full overflow-hidden relative">
-        <div className="p-4 border-b border-slate-800">
-          <h1 className="text-lg font-bold text-white flex items-center gap-2">
-            <AlertTriangle className="text-orange-500" size={20} />
-            FIRE_SIM_COMMAND
-          </h1>
-          <div className="flex items-center gap-2 mt-2">
-             <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-             <span className="text-xs font-mono text-slate-400">CLUSTER: ONLINE</span>
+    <main className="bg-[#0a0e1a] text-slate-200 font-sans selection:bg-orange-500/30" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+      <aside className="relative flex flex-col h-full bg-[#0B1121] border-r border-white/5 shadow-2xl z-20 overflow-hidden">
+        <div className="p-6 border-b border-white/10 bg-[#0f172a]/80 backdrop-blur-sm relative z-10">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2.5 bg-gradient-to-br from-orange-500/20 to-red-600/20 rounded-lg border border-orange-500/30">
+              <AlertTriangle className="text-orange-500" size={22} />
+            </div>
+            <h1 className="text-lg font-black tracking-tight text-white leading-none">INCIDENT<br/><span className="text-orange-500">COMMANDER</span></h1>
           </div>
         </div>
 
-        <div className="p-4 space-y-6 flex-1 overflow-y-auto">
-          {/* Controls */}
-          <div>
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Wind size={14} /> Wind Speed ({simParams.windSpeed} mph)
-            </h2>
-            <input 
-              type="range" min="0" max="100" 
-              value={simParams.windSpeed}
-              onChange={(e) => setSimParams({...simParams, windSpeed: parseInt(e.target.value)})}
-              className="w-full h-1 bg-slate-700 rounded-lg cursor-pointer accent-orange-500"
-            />
-          </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10 custom-scrollbar">
+          <div className="space-y-4">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Environmental Specs</label>
+            
+            {/* WIND SPEED */}
+            <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+               <div className="flex justify-between text-xs mb-2"><span>Wind Velocity</span><span className="text-orange-400 font-mono">{simParams.windSpeed} MPH</span></div>
+               <input type="range" min="0" max="100" value={simParams.windSpeed} onChange={(e) => setSimParams({...simParams, windSpeed: parseInt(e.target.value)})} className="w-full h-1 bg-slate-800 accent-orange-500" />
+            </div>
 
-          <div>
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Terminal size={14} /> AI Assistant
-            </h2>
-            <div className="space-y-2">
-                <textarea 
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAICommand(); }}}
-                className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-sm text-white focus:ring-1 focus:ring-blue-500 outline-none resize-none font-mono"
-                rows={3}
-                placeholder="e.g. 'Strong North winds'..."
-                />
-                <button 
-                    onClick={handleAICommand}
-                    disabled={aiMutation.isPending}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-xs py-2 rounded text-cyan-400 border border-slate-700 transition-colors uppercase tracking-wider"
-                >
-                    {aiMutation.isPending ? 'PARSING...' : 'EXECUTE AGENT COMMAND'}
-                </button>
+            {/* TEMPERATURE */}
+            <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+               <div className="flex justify-between text-xs mb-2">
+                 <span className="flex items-center gap-1"><Thermometer size={12}/> Temperature</span>
+                 <span className="text-red-400 font-mono">{simParams.temperature}°F</span>
+               </div>
+               <input type="range" min="30" max="120" value={simParams.temperature} onChange={(e) => setSimParams({...simParams, temperature: parseInt(e.target.value)})} className="w-full h-1 bg-slate-800 accent-red-500" />
+            </div>
+
+            {/* HUMIDITY */}
+            <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+               <div className="flex justify-between text-xs mb-2">
+                 <span className="flex items-center gap-1"><Droplets size={12}/> Humidity</span>
+                 <span className="text-blue-400 font-mono">{simParams.humidity}%</span>
+               </div>
+               <input type="range" min="0" max="100" value={simParams.humidity} onChange={(e) => setSimParams({...simParams, humidity: parseInt(e.target.value)})} className="w-full h-1 bg-slate-800 accent-blue-500" />
+            </div>
+
+            {/* SLOPE */}
+            <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+               <div className="flex justify-between text-xs mb-2">
+                 <span className="flex items-center gap-1"><Mountain size={12}/> Gradient Slope</span>
+                 <span className="text-emerald-400 font-mono">{simParams.slope}°</span>
+               </div>
+               <input type="range" min="0" max="45" value={simParams.slope} onChange={(e) => setSimParams({...simParams, slope: parseInt(e.target.value)})} className="w-full h-1 bg-slate-800 accent-emerald-500" />
             </div>
           </div>
         </div>
 
-        <div className="p-4 mt-auto border-t border-slate-800">
-          <button 
-            onClick={() => mutation.mutate(simParams)}
-            disabled={mutation.isPending}
-            className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-slate-700 text-white py-3 rounded font-bold text-sm flex items-center justify-center gap-2 transition-all"
-          >
-            {mutation.isPending ? <Loader2 className="animate-spin" /> : <Play size={16} fill="currentColor" />}
-            {mutation.isPending ? 'CALCULATING...' : 'RUN SIMULATION'}
+        {/* --- AI TERMINAL SECTION --- */}
+        <div className="px-6 py-4 space-y-2 border-t border-white/5">
+          <label className="text-[10px] font-bold text-purple-400 uppercase tracking-[0.2em] flex items-center gap-2">
+            <Terminal size={12} /> AI Prompt
+          </label>
+          <div className="relative group bg-black/40 rounded-lg border border-purple-500/20 p-1">
+            <textarea 
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleAICommand())}
+              className="w-full bg-transparent p-3 text-xs text-slate-200 placeholder:text-slate-600 font-mono outline-none resize-none"
+              placeholder="// Input natural language command..."
+              rows={3}
+            />
+            <button 
+              onClick={handleAICommand}
+              disabled={aiMutation.isPending}
+              className="absolute bottom-2 right-2 p-1.5 bg-purple-600 hover:bg-purple-500 rounded text-white transition-colors disabled:opacity-50"
+            >
+              {aiMutation.isPending ? <Loader2 className="animate-spin" size={14} /> : <ChevronRight size={14} />}
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 mt-auto border-t border-white/10 bg-[#0f172a] relative z-20">
+          <button onClick={() => mutation.mutate(simParams)} disabled={mutation.isPending} className="w-full bg-orange-600 p-4 rounded-lg font-bold flex items-center justify-center gap-3">
+            {mutation.isPending ? <Loader2 className="animate-spin" /> : <Zap size={18} />}
+            INITIATE SIMULATION
           </button>
         </div>
       </aside>
 
-      {/* 2. MAP AREA (Right Column) */}
-      <section className="relative h-full w-full bg-black">
-        
-        {!MAPBOX_TOKEN && (
-           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black text-red-500 font-mono">
-              ERROR: MAPBOX TOKEN MISSING
-           </div>
-        )}
-
-        <Map
-          initialViewState={{ longitude: -121.5, latitude: 38.5, zoom: 9 }}
-          // ⚠️ FORCE WIDTH/HEIGHT
-          style={{ width: '100%', height: '100%' }}
-          mapStyle="mapbox://styles/mapbox/dark-v11"
-          mapboxAccessToken={MAPBOX_TOKEN}
-        >
-          {mutation.data && (
-            <Source type="geojson" data={fireData as any}>
-              <Layer {...heatmapLayer} />
-            </Source> 
-          )}
-          
-          <NavigationControl position="top-right" showCompass={false} />
-          <ScaleControl position="bottom-right" />
+      <section className="relative h-full w-full bg-black z-10">
+        <Map initialViewState={{ longitude: -121.5, latitude: 38.5, zoom: 9 }} style={{ width: '100%', height: '100%' }} mapStyle="mapbox://styles/mapbox/dark-v11" mapboxAccessToken={MAPBOX_TOKEN}>
+          {mutation.data && <Source type="geojson" data={fireData as any}><Layer {...heatmapLayer} /></Source>}
+          <NavigationControl position="top-right" />
         </Map>
       </section>
     </main>
