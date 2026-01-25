@@ -96,9 +96,9 @@ export default function RiskReport({
 
       {/* --- RESULTS LIST --- */}
       {risks.length === 0 && totalCount > 0 ? (
-         <div className="p-6 text-center text-xs text-red-300/50 italic border border-white/5 rounded-xl">
+          <div className="p-6 text-center text-xs text-red-300/50 italic border border-white/5 rounded-xl">
            No alerts match your filter criteria.
-         </div>
+          </div>
       ) : risks.length === 0 ? (
         <div className="text-center py-10 text-slate-500 border-2 border-dashed border-white/5 rounded-xl">
           <Activity className="mx-auto mb-2 opacity-50" />
@@ -130,8 +130,7 @@ export default function RiskReport({
                   </div>
                 </div>
                 <div className="text-right">
-                   <div className="text-sm font-black text-red-500 font-mono">T+{item.timeToImpact}h</div>
-                   <div className="text-[8px] text-red-400/60 uppercase font-bold tracking-wider">Impact</div>
+                    <div className="text-sm font-black text-red-500 font-mono">T+{item.timeToImpact}h</div>
                 </div>
               </div>
             ))}

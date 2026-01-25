@@ -13,11 +13,11 @@ export function useSimulation() {
 
   // Queue State
   const [isSimQueued, setIsSimQueued] = useState(false);
-  const [queuedConfig, setQueuedConfig] = useState<any>(null); // Store the entire config, not just origin
+  const [queuedConfig, setQueuedConfig] = useState<any>(null);
 
   const mutation = useMutation({
     mutationFn: async (payload: any) => {
-      console.log("🔥 FIRING SIMULATION API:", payload);
+      // console.log("🔥 FIRING SIMULATION API:", payload); 
       const res = await fetch('http://127.0.0.1:8000/simulate', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
@@ -33,20 +33,30 @@ export function useSimulation() {
   });
 
   // --- TRIGGER FUNCTION (FIXED) ---
-  // Now accepts 'overrideParams'. If provided, we use those. If not, we use state.
   const triggerSimulation = (origin: {lat: number, lon: number}, isMapLoading: boolean, overrideParams?: any, forceQueue: boolean = false) => {
     
-    // Combine current state with any new AI overrides
-    const finalParams = { ...simParams, ...overrideParams };
+    // 1. Merge State with AI Overrides
+    const mergedParams = { ...simParams, ...overrideParams };
 
-    // logic: If map is loading OR we forced a queue (because we know a move is happening)
+    // 2. INTELLIGENT COORDINATE SELECTION
+    // If the AI gave us specific coordinates (in overrideParams), use them!
+    // Otherwise, fall back to the Page's 'origin' state.
+    const finalLat = overrideParams?.originLat ?? origin.lat;
+    const finalLon = overrideParams?.originLon ?? origin.lon;
+
+    const finalConfig = {
+        ...mergedParams,
+        originLat: finalLat,
+        originLon: finalLon
+    };
+
     if (isMapLoading || forceQueue) {
-        console.log("⏳ Queuing Simulation. Waiting for assets...");
-        setQueuedConfig({ ...finalParams, originLat: origin.lat, originLon: origin.lon });
+        console.log("⏳ Queuing Simulation for:", finalLat, finalLon);
+        setQueuedConfig(finalConfig);
         setIsSimQueued(true);
     } else {
-        console.log("✅ Ready. Running immediately with:", finalParams);
-        mutation.mutate({ ...finalParams, originLat: origin.lat, originLon: origin.lon });
+        console.log("✅ Ready. Running immediately at:", finalLat, finalLon);
+        mutation.mutate(finalConfig);
     }
   };
 
@@ -54,7 +64,7 @@ export function useSimulation() {
   const notifyMapLoaded = () => {
       if (isSimQueued && queuedConfig) {
           console.log("🚀 Map Loaded! Executing queued simulation.");
-          mutation.mutate(queuedConfig); // Use the stored config
+          mutation.mutate(queuedConfig);
           setIsSimQueued(false);
           setQueuedConfig(null);
       }

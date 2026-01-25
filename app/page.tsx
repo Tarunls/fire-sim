@@ -59,7 +59,7 @@ export default function IncidentCommander() {
         const bufferTimeout = setTimeout(() => {
             console.log("⏱️ Buffer complete. Notifying simulation engine.");
             notifyMapLoaded();
-        }, 2000); // <--- Added your 2-second "good measure" delay
+        }, 2000); // <--- Added your 4-second "good measure" delay
 
         return () => clearTimeout(bufferTimeout);
     }
@@ -108,20 +108,27 @@ export default function IncidentCommander() {
 
       const query = `[out:json][timeout:90];(nwr["amenity"="hospital"](${latMin},${lonMin},${latMax},${lonMax});nwr["healthcare"="hospital"](${latMin},${lonMin},${latMax},${lonMax});nwr["amenity"="clinic"](${latMin},${lonMin},${latMax},${lonMax});nwr["power"="substation"](${latMin},${lonMin},${latMax},${lonMax});nwr["power"="generator"](${latMin},${lonMin},${latMax},${lonMax});nwr["amenity"="fire_station"](${latMin},${lonMin},${latMax},${lonMax});nwr["amenity"="school"](${latMin},${lonMin},${latMax},${lonMax});nwr["emergency"="designated"](${latMin},${lonMin},${latMax},${lonMax}););out center;`; 
 
+      
+
       try {
         const response = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: query });
         const data = await response.json();
         const processed = data.elements.map((node: any) => {
-           let type = "unknown";
-           if (node.tags.amenity === "hospital" || node.tags.healthcare === "hospital" || node.tags.amenity === "clinic") type = "medical";
-           else if (node.tags.power === "substation" || node.tags.power === "generator") type = "power";
-           else if (node.tags.amenity === "fire_station") type = "response";
-           else if (node.tags.amenity === "school") type = "school";
-           
-           const lat = node.lat || node.center?.lat;
-           const lon = node.lon || node.center?.lon;
-           if (!lat || !lon) return null;
-           return { id: node.id, name: node.tags.name || `${type} Asset`, type, lat, lon };
+          let type = "unknown";
+          let value = 1000000; // Default $1M
+          
+          if (node.tags.amenity === "hospital") { type = "medical"; value = 15000000; }
+          else if (node.tags.amenity === "school") { type = "school"; value = 10000000; }
+          else if (node.tags.power === "substation") { type = "power"; value = 5000000; }
+
+          return { 
+            id: node.id, 
+            name: node.tags.name || `${type} Asset`, 
+            type, 
+            lat: node.lat || node.center?.lat, 
+            lon: node.lon || node.center?.lon,
+            estimatedValue: value // <--- Store the value
+          };
         }).filter((i: any) => i !== null);
         
         console.log(`📡 GIS Data: Found ${processed.length} assets.`);
@@ -134,45 +141,58 @@ export default function IncidentCommander() {
 
   // --- RISK CALCULATION (FIXED) ---
   useEffect(() => {
-      // Only run if we have BOTH fire history AND landmarks
-      if (history.length > 0 && landmarks.length > 0) {
-          console.log(`⚠️ Calculating Risks: Checking ${landmarks.length} assets against fire...`);
-          setIsCalculatingRisks(true);
-          
+      // 1. Safety Check: Do we have data to crunch?
+      if (history.length === 0 || landmarks.length === 0) return;
+
+      // 2. Optimization: If we already have a report for this exact history, skip (prevents loops)
+      // We check if the first risk matches the current history timestamp or id if available
+      // For now, we just let it recalculate to be safe.
+
+      console.log(`⚠️ Calculating Risks: Checking ${landmarks.length} assets against fire...`);
+      setIsCalculatingRisks(true);
+      
+      // 3. Small timeout to allow the 'landmarks' state to fully settle in React's memory
+      const calcTimer = setTimeout(() => {
           const impactMap: Record<number, any> = {};
           const range = 0.015; // Hit radius
 
-          history.forEach((frame, idx) => {
+          history.forEach((frame) => {
             frame.forEach((firePoint: any) => {
               if (firePoint.intensity < 0.2) return;
               
               landmarks.forEach(lm => {
-                if (impactMap[lm.id]) return; // Already hit
+                if (impactMap[lm.id]) return; // Already registered as hit
                 
-                // Quick Box Check
+                // Fast Box Check (Optimization)
                 if (Math.abs(firePoint.lat - lm.lat) > range) return;
                 if (Math.abs(firePoint.lon - lm.lon) > range) return;
                 
                 // Precise Distance Check
                 const dist = Math.sqrt(Math.pow(firePoint.lat - lm.lat, 2) + Math.pow(firePoint.lon - lm.lon, 2));
                 if (dist < 0.008) { 
-                    impactMap[lm.id] = { ...lm, timeToImpact: (idx * 0.5).toFixed(1) }; 
+                    impactMap[lm.id] = { ...lm, timeToImpact: (firePoint.step || 0) * 0.5 }; // Assuming step info is available or approximate with frame index
+                    // Fallback if step isn't in point data: use frame index from the outer loop if needed
                 }
               });
             });
           });
           
           const report = Object.values(impactMap).sort((a: any, b: any) => parseFloat(a.timeToImpact) - parseFloat(b.timeToImpact));
-          console.log(`🔥 Risk Report: ${report.length} impacts found.`);
+          
+          console.log(`🔥 Risk Report Generated: ${report.length} impacts.`);
           setRiskReport(report);
           setIsCalculatingRisks(false);
           
+          // Only switch tabs if we actually found something
           if (report.length > 0) { 
               setActiveTab('impact'); 
               setShowAllLandmarks(false); 
           }
-      }
-  }, [history, landmarks]); // <--- FIX: Depends on BOTH now
+      }, 100); // 100ms "State Settle" Buffer
+
+      return () => clearTimeout(calcTimer);
+
+  }, [history, landmarks]); // <--- THIS DEPENDENCY ARRAY IS KEY
 
   // --- MEMOS ---
   const getLandmarkIcon = (type: string, size: number = 18) => {
@@ -203,7 +223,7 @@ export default function IncidentCommander() {
         <div className="p-6 border-b border-white/10 bg-[#0f172a]/80 backdrop-blur-sm relative z-10">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2.5 bg-gradient-to-br from-orange-500/20 to-red-600/20 rounded-lg border border-orange-500/30"><AlertTriangle className="text-orange-500" size={22} /></div>
-            <h1 className="text-lg font-black tracking-tight text-white leading-none">The INCIDENT-er<br/><span className="text-orange-500">COMMANDER</span></h1>
+            <h1 className="text-lg font-black tracking-tight text-white leading-none">INCIDENT<br/><span className="text-orange-500">COMMANDER</span></h1>
           </div>
           <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded-lg">
             <button onClick={() => setActiveTab('controls')} className={`py-2 text-[10px] font-bold rounded-md transition-all ${activeTab === 'controls' ? 'bg-slate-700 text-white' : 'text-slate-500'}`}><LayoutDashboard size={14} className="inline mr-1"/> CONTROLS</button>
