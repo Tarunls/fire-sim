@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   Compass, Thermometer, Droplets, Mountain, Waves, Clock, 
-  Terminal, Loader2, ChevronRight 
+  Terminal, Loader2, ChevronRight, Volume2, VolumeX, CloudLightning
 } from 'lucide-react';
 
 interface ControlPanelProps {
@@ -11,20 +11,46 @@ interface ControlPanelProps {
   setAiPrompt: (val: string) => void;
   onExecuteAI: () => void;
   isAiLoading: boolean;
+  isMuted: boolean;
+  onToggleMute: () => void;
+  onSyncWeather: () => void;
 }
 
 export default function ControlPanel({
-  simParams, setSimParams, aiPrompt, setAiPrompt, onExecuteAI, isAiLoading
+  simParams, setSimParams, aiPrompt, setAiPrompt, onExecuteAI, isAiLoading, isMuted, onToggleMute, onSyncWeather
 }: ControlPanelProps) {
   
   const compassGrid = ['NW', 'N', 'NE', 'W', '', 'E', 'SW', 'S', 'SE'];
 
   return (
     <div className="space-y-6 animate-in slide-in-from-left-4 fade-in duration-300">
+
+    {/* --- AUDIO TOGGLE SECTION --- */}
+      <div className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5">
+        <div className="flex flex-col">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Voice Synthesis</span>
+          <span className="text-xs text-slate-300">{isMuted ? 'ElevenLabs Disabled' : 'ElevenLabs Active'}</span>
+        </div>
+        <button 
+          onClick={onToggleMute}
+          className={`p-2 rounded-lg transition-all ${isMuted ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'}`}
+        >
+          {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+        </button>
+      </div>
       
       {/* --- SLIDERS SECTION --- */}
       <div className="space-y-4">
+
+        <div className="flex justify-between items-center mb-2">
         <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Environmental Specs</label>
+        <button 
+            onClick={onSyncWeather} 
+            className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-1 rounded border border-blue-500/30 hover:bg-blue-500/40 transition-all flex items-center gap-1"
+        >
+            <CloudLightning size={12}/> SYNC LIVE
+        </button>
+        </div>
         
         {/* COMPASS */}
         <div className="bg-white/5 rounded-xl p-3 border border-white/5">

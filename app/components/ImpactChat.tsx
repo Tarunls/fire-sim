@@ -8,6 +8,7 @@ interface ImpactChatProps {
   onUpdateLocation: (lat: number, lon: number) => void;
   onTriggerSim: (overrideParams?: any, forceQueue?: boolean) => void;
   isMapLoading: boolean;
+  onPlanRoute: (assets: any[]) => void;
 }
 
 export default function ImpactChat({ 
@@ -15,7 +16,8 @@ export default function ImpactChat({
   onUpdateParams, 
   onUpdateLocation, 
   onTriggerSim,
-  isMapLoading 
+  isMapLoading,
+  onPlanRoute 
 }: ImpactChatProps) {
   
   const [input, setInput] = useState('');
@@ -143,6 +145,30 @@ export default function ImpactChat({
          body: JSON.stringify({ prompt: textToSend, risk_data: [] })
        });
        const data = await res.json();
+
+       if (data.type === 'specific_route') {
+            const requestedNames = data.payload.names; // ["Woodrow Wilson", "Star Hospital"]
+            
+            // We look through the REAL data objects in the riskReport
+            const matchedAssets = riskReport.filter(asset => 
+                requestedNames.some((name: string) => 
+                    asset.name.toLowerCase().includes(name.toLowerCase())
+                )
+            );
+
+            if (matchedAssets.length > 0) {
+                // This is the function we passed from page.tsx
+                onPlanRoute(matchedAssets); 
+                
+                const namesFound = matchedAssets.map(a => a.name).join(', ');
+                const reply = `I've staged a route for: ${namesFound}. You can launch it from the Impact tab.`;
+                
+                setMessages(prev => [...prev, { role: 'bot', text: reply }]);
+                speak(reply);
+            } else {
+                speak("I found the names, but they don't seem to be in the current impact zone.");
+            }
+        }
        
        if (data.type === 'action') {
            const params = data.payload;

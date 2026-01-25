@@ -13,15 +13,14 @@ interface RiskReportProps {
   onSearchChange: (term: string) => void;
   activeFilters: Set<string>;
   onToggleFilter: (type: string) => void;
+  routeStops: any[];
+  setRouteStops: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
 export default function RiskReport({ 
   risks, totalCount, showAll, onToggleView,
-  searchTerm, onSearchChange, activeFilters, onToggleFilter 
+  searchTerm, onSearchChange, activeFilters, onToggleFilter, routeStops, setRouteStops
 }: RiskReportProps) {
-
-  // --- ROUTING STATE ---
-  const [routeStops, setRouteStops] = useState<any[]>([]);
 
   // Toggle Selection
   const handleSelectForRoute = (item: any) => {

@@ -59,15 +59,16 @@ def analyze_query_intent(user_prompt: str):
 
 # --- 3. THE ROUTER ---
 def route_and_process(user_prompt: str, risk_data: list):
-    """
-    Decides if the user wants to CONFIGURE or QUERY.
-    """
     system_instructions = """
-    Classify intent:
-    1. ACTION: Change settings, start fire, move map. (e.g. "Set wind 50", "Go to Dallas")
-    2. QUERY: Ask about data/safety. (e.g. "Who is in danger?", "Hospitals nearby")
+    Classify intent with strict priority:
+
+    1. ACTION: Move the ENTIRE simulation to a new city or change environmental constants. 
+       Look for: "Go to [City Name]", "Move to [City Name]", "Set wind to 50".
+       (Example: "Go to Dallas") -> intent: ACTION
+       
+    2. QUERY: Ask about data/safety.
     
-    Output JSON: { "intent": "ACTION" } or { "intent": "QUERY" }
+    Output JSON: { "intent": "ACTION" | "QUERY" }
     """
     try:
         response = client.chat.completions.create(

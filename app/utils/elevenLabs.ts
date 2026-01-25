@@ -3,8 +3,17 @@
 const ELEVEN_LABS_API_KEY = process.env.NEXT_PUBLIC_ELEVEN_LABS_KEY;
 const TTS_VOICE_ID = "Gfpl8Yo74Is0W6cPUWWT"; 
 
+let isMuted = false;
+
+export const setMuteSpeech = (val: boolean) => {
+  isMuted = val;
+  if (val) window.speechSynthesis.cancel(); // Stop any current audio
+};
+
+
 // 1. Text-to-Speech (Speaking)
 export const speak = async (text: string) => {
+  if (isMuted) return;
   if (!ELEVEN_LABS_API_KEY) return;
   try {
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${TTS_VOICE_ID}`, {
