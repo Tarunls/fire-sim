@@ -27,6 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 3. UPDATE PARAMS TO INCLUDE LOCATION
 class SimParams(BaseModel):
     temperature: float
     humidity: float
@@ -34,23 +35,22 @@ class SimParams(BaseModel):
     windSpeed: float
     windDir: str
     slope: float
-    duration: int = 24 # Default 24 hours
-
-# --- ADVANCED VECTOR PHYSICS ENGINE ---
-
-# ... imports and SimParams remain the same ...
+    duration: int = 24 
+    # NEW: Dynamic Start Location
+    originLat: float
+    originLon: float
 
 # --- ADVANCED VECTOR PHYSICS ENGINE ---
 def run_simulation(params: SimParams):
-    # 1. HIGHER RESOLUTION (Less Blocky)
+    print(f"--- SIMULATING AT: {params.originLat}, {params.originLon} ---")
+
+    # 1. HIGHER RESOLUTION
     grid_size = 200 
     
     fire = np.zeros((grid_size, grid_size), dtype=float)
     fuel = np.ones((grid_size, grid_size), dtype=float)
     
-    # 2. TERRAIN ROUGHNESS (The Anti-Block Fix)
-    # We generate a static noise map. The fire flows easier in some spots than others.
-    # This simulates rocks, dirt patches, and density differences.
+    # 2. TERRAIN ROUGHNESS
     terrain_roughness = np.random.normal(1.0, 0.3, (grid_size, grid_size))
     terrain_roughness = np.clip(terrain_roughness, 0.5, 1.5)
     
@@ -58,6 +58,7 @@ def run_simulation(params: SimParams):
     fuel += np.random.normal(0, 0.1, (grid_size, grid_size))
     fuel = np.clip(fuel, 0.5, 1.0)
     
+    # Start Fire in Center
     mid = grid_size // 2
     fire[mid-3:mid+4, mid-3:mid+4] = 1.0
 
@@ -68,15 +69,15 @@ def run_simulation(params: SimParams):
     wind_vec = np.array(vectors.get(params.windDir, (0, 0)), dtype=float)
     wind_magnitude = (params.windSpeed / 50.0)
     
-    dryness = 1.0 
-    # Lower base prob slightly since we have more cells now
     base_prob = 0.25 
     slope_factor = params.slope / 50.0
 
     history = [] 
     total_steps = params.duration * 2 
     
-    print(f"--- RUNNING HIGH-RES SIMULATION ({total_steps} Steps) ---")
+    # 3. DYNAMIC SCALING
+    # This ensures the grid covers the same physical area regardless of location
+    scale = 0.004 
 
     for step in range(total_steps):
         new_fire = fire.copy()
@@ -91,7 +92,7 @@ def run_simulation(params: SimParams):
         
         source_indices = np.argwhere(fire > 0.1)
         
-        # Optimization for larger grid
+        # Optimization
         if len(source_indices) > 800:
              indices_to_process = source_indices[np.random.choice(len(source_indices), 800, replace=False)]
         else:
@@ -121,8 +122,7 @@ def run_simulation(params: SimParams):
                     s_boost = 1.0
                     if dr < 0: s_boost += slope_factor * 2.0
                     
-                    # APPLY TERRAIN ROUGHNESS HERE
-                    # This breaks the "square" shape
+                    # Terrain Roughness
                     local_roughness = terrain_roughness[nr, nc]
                     
                     prob = base_prob * (1.0/dist) * wind_boost * s_boost * local_roughness
@@ -132,21 +132,21 @@ def run_simulation(params: SimParams):
 
         fire = np.clip(new_fire, 0, 1)
 
-        center_lat, center_lon = 38.5, -121.5
-        # Adjusted scale for higher resolution grid so it covers same area
-        scale = 0.004 
         frame_data = []
-        
         active_cells = np.argwhere(fire > 0.05)
         
-        # Only export every 2nd or 3rd cell to keep JSON size manageable for frontend
         for r, c in active_cells:
-            # Simple downsampling for export speed
+            # Downsampling for export speed
             if random.random() > 0.3: continue 
 
+            # --- CRITICAL FIX: USE DYNAMIC ORIGIN ---
+            # Calculate lat/lon based on the USER PROVIDED origin, not hardcoded Sacramento
+            real_lat = params.originLat + (mid - r) * scale
+            real_lon = params.originLon + (c - mid) * scale
+
             frame_data.append({
-                "lat": round(float(center_lat + (mid - r) * scale), 4),
-                "lon": round(float(center_lon + (c - mid) * scale), 4),
+                "lat": round(float(real_lat), 5),
+                "lon": round(float(real_lon), 5),
                 "intensity": round(float(fire[r, c]), 2)
             })
         
@@ -159,14 +159,25 @@ async def get_simulation(params: SimParams):
     data = run_simulation(params)
     return {"status": "success", "data": data}
 
+# --- REAL AI AGENT PARSER ---
 @app.post("/parse-command")
 async def parse_agent_command(cmd: dict):
     prompt = cmd.get('prompt')
+    
+    # Updated System Instructions to handle complex queries
     system_instructions = """
     You are a Wildfire Simulation Specialist. Extract physics parameters into JSON.
-    REQUIRED KEYS: windSpeed (float), windDir (N,S,E,W,NE,NW,SE,SW), moisture (float), humidity (float), temperature (float), slope (float), time (float).
-    Infer values. Defaults: moisture:15, temp:75, humidity:30, windSpeed:10, windDir:N, slope:0, time:12.
+    REQUIRED KEYS: windSpeed (float), windDir (N,S,E,W,NE,NW,SE,SW), moisture (float), humidity (float), temperature (float), slope (float), duration (int).
+    
+    Defaults if unspecified: 
+    moisture:15, temp:75, humidity:30, windSpeed:10, windDir:N, slope:0, duration:24.
+    
+    Context:
+    - "Heatwave" = High temp (100+), low humidity (10-15%).
+    - "Santa Ana Winds" = High speed (60+), windDir NE, low humidity.
+    - "Morning" = Lower temp, higher humidity.
     """
+    
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -177,7 +188,12 @@ async def parse_agent_command(cmd: dict):
             response_format={ "type": "json_object" }
         )
         parsed_params = json.loads(response.choices[0].message.content)
-        return {"status": "parsed", "params": parsed_params, "ai_response": f"AI Analysed: {prompt}"}
+        
+        # Ensure duration is passed back (mapped from 'time' if necessary)
+        if 'time' in parsed_params and 'duration' not in parsed_params:
+            parsed_params['duration'] = int(parsed_params['time'])
+            
+        return {"status": "parsed", "params": parsed_params}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
