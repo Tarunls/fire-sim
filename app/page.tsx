@@ -278,7 +278,7 @@ export default function IncidentCommander() {
           <div>
             <div className="flex items-center gap-3 mb-6">
                 <div className="p-2.5 bg-gradient-to-br from-orange-500/20 to-red-600/20 rounded-lg border border-orange-500/30"><AlertTriangle className="text-orange-500" size={22} /></div>
-                <h1 className="text-lg font-black tracking-tight text-white leading-none">INCIDENT<br/><span className="text-orange-500">COMMANDER</span></h1>
+                <h1 className="text-lg font-black tracking-tight text-white leading-none">Cinder<br/><span className="text-orange-500">Control</span></h1>
             </div>
             <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded-lg w-full">
                 <button onClick={() => setActiveTab('controls')} className={`py-2 px-2 text-[10px] font-bold rounded-md transition-all ${activeTab === 'controls' ? 'bg-slate-700 text-white' : 'text-slate-500'}`}><LayoutDashboard size={14} className="inline mr-1"/> CONTROL</button>

@@ -6,7 +6,7 @@ import Providers from "./providers"; // <--- Import the new file
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Incident Commander",
+  title: "Cinder Control",
   description: "Wildfire Physics Engine",
 };
 
