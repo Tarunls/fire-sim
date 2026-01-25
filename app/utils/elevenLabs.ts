@@ -1,7 +1,7 @@
 // app/utils/elevenLabs.ts
 
 const ELEVEN_LABS_API_KEY = process.env.NEXT_PUBLIC_ELEVEN_LABS_KEY;
-const TTS_VOICE_ID = "S9GPGBaMND8XWwwzxQXp"; 
+const TTS_VOICE_ID = "Gfpl8Yo74Is0W6cPUWWT"; 
 
 // 1. Text-to-Speech (Speaking)
 export const speak = async (text: string) => {

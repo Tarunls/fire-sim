@@ -24,6 +24,55 @@ export default function ImpactChat({
     { role: 'bot', text: 'Command Hub Online.' }
   ]);
   
+  // State to track if we have already summarized the current report
+  // This prevents it from repeating itself if the component re-renders
+  const [lastReportLen, setLastReportLen] = useState(0);
+
+  // --- AUTO-SUMMARY: Watch for new Risk Reports ---
+  useEffect(() => {
+    // 1. Check if we have a NEW, populated report
+    if (riskReport.length > 0 && riskReport.length !== lastReportLen) {
+        
+        // 2. Generate Statistics
+        const count = riskReport.length;
+        const medical = riskReport.filter(r => r.type === 'medical').length;
+        const schools = riskReport.filter(r => r.type === 'school').length;
+        const power = riskReport.filter(r => r.type === 'power').length;
+
+        // 3. Construct the "Overview" Message
+        let summary = `Simulation complete. Detected ${count} impacted assets.`;
+        
+        const details = [];
+        if (medical > 0) details.push(`${medical} medical facilities`);
+        if (schools > 0) details.push(`${schools} schools`);
+        if (power > 0) details.push(`${power} power stations`);
+
+        if (details.length > 0) {
+            summary += ` Including ${details.join(', ')}.`;
+        }
+
+        // 4. Send to Chat & Speak
+        // We add a small delay so it doesn't happen the exact millisecond the map appears
+        setTimeout(() => {
+            setMessages(prev => [...prev, { 
+                role: 'bot', 
+                text: summary, 
+                // We attach the full report here so the user can click/expand if they want
+                results: riskReport 
+            }]);
+            speak(summary);
+        }, 1000);
+
+        // Update tracker so we don't say it again until the count changes
+        setLastReportLen(count);
+    } 
+    // Reset tracker if report is cleared (new sim started)
+    else if (riskReport.length === 0 && lastReportLen !== 0) {
+        setLastReportLen(0);
+    }
+  }, [riskReport, lastReportLen]);
+
+
   // --- NATIVE BROWSER RECORDING STATE ---
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
@@ -31,7 +80,7 @@ export default function ImpactChat({
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // --- 1. START LISTENING (Browser Native) ---
+  // --- START LISTENING ---
   const startListening = () => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
         alert("Browser does not support Speech Recognition.");
@@ -50,20 +99,18 @@ export default function ImpactChat({
             .map((result) => result.transcript)
             .join('');
         
-        setInput(transcript); // Show text while speaking
+        setInput(transcript); 
 
-        // --- AUTO-SEND LOGIC ---
+        // Auto-Send on finish
         if (event.results[0].isFinal) {
             stopListening();
-            // Wait 800ms for user to see the text, then send automatically
             setTimeout(() => {
-                handleSend(transcript); // <--- PASS TEXT DIRECTLY
+                handleSend(transcript);
             }, 800);
         }
     };
 
     recognitionRef.current.onend = () => setIsListening(false);
-    recognitionRef.current.onerror = () => setIsListening(false);
     recognitionRef.current.start();
     setIsListening(true);
   };
@@ -80,12 +127,9 @@ export default function ImpactChat({
       else startListening();
   };
 
-  // --- 2. SEND MESSAGE ---
-  // Added optional 'overrideText' to support auto-send
+  // --- SEND MESSAGE ---
   const handleSend = async (overrideText?: string) => {
-     // Use overrideText if provided, otherwise use state input
      const textToSend = typeof overrideText === 'string' ? overrideText : input;
-     
      if (!textToSend.trim()) return;
      
      setMessages(prev => [...prev, { role: 'user', text: textToSend }]);
@@ -119,7 +163,6 @@ export default function ImpactChat({
            onTriggerSim(params, didMove);
        } else {
            const filters = data.payload;
-           // Filter Logic (Same as before)
            const results = riskReport.filter(item => {
              const t = parseFloat(item.timeToImpact);
              const matchesTime = t >= (filters.min_time || 0) && t <= (filters.max_time || 999);
@@ -151,7 +194,6 @@ export default function ImpactChat({
 
   return (
     <div className="flex flex-col h-full bg-[#05050a] border-t border-white/10">
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
          {messages.map((m, idx) => (
              <div key={idx} className={`flex flex-col gap-1 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
@@ -178,7 +220,6 @@ export default function ImpactChat({
          <div ref={scrollRef}></div>
       </div>
 
-      {/* Input Bar */}
       <div className="p-3 bg-[#0B1121] flex gap-2">
         <button 
             onClick={handleMicClick} 
@@ -193,7 +234,7 @@ export default function ImpactChat({
         <input 
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()} // Manual send still works
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()} 
           placeholder={isListening ? "Listening..." : "Type a command..."}
           className="flex-1 bg-[#0f172a] border border-white/10 rounded-lg px-3 py-3 text-xs text-white focus:outline-none placeholder:text-slate-600"
         />
