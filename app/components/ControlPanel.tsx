@@ -84,35 +84,6 @@ export default function ControlPanel({
         </div>
       </div>
 
-      {/* --- AI TERMINAL SECTION --- */}
-      <div className="space-y-3 px-4 py-3 border border-white/5 bg-black/20 rounded-xl">
-        <div className="flex items-center justify-between">
-          <label className="text-[10px] font-bold text-purple-400 uppercase tracking-widest flex items-center gap-2">
-            <Terminal size={12} /> Neural Input
-          </label>
-          {isAiLoading && <Loader2 size={12} className="text-purple-500 animate-spin" />}
-        </div>
-        <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg blur opacity-10 group-hover:opacity-25 transition"></div>
-          <div className="relative bg-[#05050a] rounded-lg border border-white/10 overflow-hidden">
-            <textarea 
-              value={aiPrompt} 
-              onChange={(e) => setAiPrompt(e.target.value)} 
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), onExecuteAI())} 
-              className="w-full bg-transparent p-3 text-xs text-slate-300 placeholder:text-slate-600 font-mono outline-none resize-none leading-relaxed" 
-              placeholder="e.g. 'Simulate a fast moving fire towards the hospital...'" 
-              rows={3} 
-            />
-            <div className="flex items-center justify-between px-3 py-2 bg-white/5 border-t border-white/5">
-              <span className="text-[9px] text-slate-500 font-mono italic">{isAiLoading ? "PARSING..." : "READY"}</span>
-              <button onClick={onExecuteAI} className="flex items-center gap-1 text-[10px] font-bold text-purple-400 hover:text-purple-300 transition">
-                EXECUTE <ChevronRight size={14} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
     </div>
   );
 }

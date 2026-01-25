@@ -3,112 +3,88 @@ import json
 import openai
 from dotenv import load_dotenv
 
-# Load Env
 load_dotenv()
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=OPENAI_KEY)
 
-# --- BRAIN 1: SIMULATION CONTROLLER (Wind, Heat, Location) ---
+# --- 1. SIMULATION LOGIC (Unchanged) ---
 def get_ai_parameters(user_prompt: str):
-    """
-    Analyzes natural language to extract simulation parameters AND location.
-    """
-    
     system_instructions = """
-    You are an Incident Command AI. Your job is to configure a wildfire simulation based on natural language.
-    
-    Output a JSON object with these keys (infer values if not specified):
-    - windSpeed (float, 0-100 mph)
-    - windDir (str: N, S, E, W, NE, NW, SE, SW)
-    - temperature (float, 30-120 F)
-    - humidity (float, 0-100 %)
-    - moisture (float, 0-100 %)
-    - slope (float, 0-45 degrees)
-    - duration (int, 2-96 hours)
-    - originLat (float, optional): ONLY if a specific location is named.
-    - originLon (float, optional): ONLY if a specific location is named.
-
-    LOGIC RULES:
-    1. CONTEXT: "Heatwave" = Temp > 100, Hum < 15. "Morning" = Temp < 65, Hum > 60.
-    2. LOCATION: If the user names a city/place (e.g. "Dallas", "Central Park"), you MUST output its approximate 'originLat' and 'originLon'. 
-    3. COORDINATES: If user gives explicit coords, use them.
-    4. DEFAULTS: If input is vague, keep standard defaults (Temp 75, Wind 10, etc).
+    You are an Incident Command AI. Configure a wildfire simulation.
+    Output JSON keys: windSpeed (0-100), windDir (N/S/E/W...), temperature (30-120), humidity (0-100), moisture (0-100), slope (0-45), duration (2-96), originLat, originLon.
+    RULES: If user names a city ("Dallas"), infer originLat/Lon.
     """
-
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_instructions},
-                {"role": "user", "content": user_prompt}
-            ],
+            messages=[{"role": "system", "content": system_instructions}, {"role": "user", "content": user_prompt}],
             response_format={"type": "json_object"},
             temperature=0.3
         )
-        
-        # Parse JSON
         params = json.loads(response.choices[0].message.content)
-        
-        # Clean up keys
         if 'time' in params: params['duration'] = int(params['time'])
-        
         return params
-
     except Exception as e:
-        print(f"AI Sim Error: {e}")
-        return {"error": "Failed to parse command"}
+        return {"error": str(e)}
 
-
-# --- BRAIN 2: CONTEXT-AWARE RAG (New & Improved) ---
-def analyze_risk_data(user_prompt: str, risk_data: list):
+# --- 2. QUERY LOGIC (The Fix: Return Filters) ---
+def analyze_query_intent(user_prompt: str):
     """
-    RAG ENGINE: Takes the full list of risks and the user's question.
-    Returns a natural language answer AND a filtered list of IDs to highlight.
+    Extracts filtering criteria from the user's question.
     """
+    system_instructions = """
+    You are a Data Query Engine. Convert the user's question into structured filters.
     
-    # 1. Simplify Data for Token Efficiency
-    # We only send what the AI needs to understand the situation.
-    context_str = json.dumps([
-        {"id": r['id'], "name": r['name'], "type": r['type'], "time": r['timeToImpact']}
-        for r in risk_data
-    ])
-
-    system_instructions = f"""
-    You are the AI Co-Pilot for an Incident Commander.
+    Output JSON keys:
+    - min_time (float, default 0)
+    - max_time (float, default 999)
+    - asset_types (list of strings: 'medical', 'school', 'power', 'response'). Empty = All.
+    - name_query (str): Keyword to search for (e.g. "Rock Prairie").
+    - ai_reply (str): A short confirmation message (e.g. "Showing hospitals impacted between 2-3 hours.").
     
-    CONTEXT DATA (Live Impact Report):
-    {context_str}
-    
-    YOUR GOAL:
-    Answer the user's question based strictly on the data above.
-    
-    OUTPUT FORMAT (JSON):
-    {{
-        "answer": "A natural language summary for the commander (and voice synthesis).",
-        "highlight_ids": [123, 456] // List of IDs referenced in your answer (to filter the map).
-    }}
-    
-    RULES:
-    1. If the user asks about a specific place ("Rock Prairie"), find it in the list.
-    2. If the user asks about time ("Next 2 hours"), check the "time" field.
-    3. If nothing matches, say "I don't see that asset in the current risk zone."
-    4. Keep answers concise and tactical.
+    Examples:
+    "Hospitals in 2-3 hours" -> { "min_time": 2, "max_time": 3, "asset_types": ["medical"], "ai_reply": "Scanning for medical facilities impacted between T+2 and T+3 hours." }
+    "Is Rock Prairie safe?" -> { "name_query": "Rock Prairie", "ai_reply": "Checking status of 'Rock Prairie'..." }
     """
-
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_instructions},
-                {"role": "user", "content": user_prompt}
-            ],
+            messages=[{"role": "system", "content": system_instructions}, {"role": "user", "content": user_prompt}],
             response_format={"type": "json_object"},
             temperature=0.1
         )
         return json.loads(response.choices[0].message.content)
     except Exception as e:
-        print(f"RAG Error: {e}")
-        return {
-            "answer": "System malfunction. Unable to analyze risk data.",
-            "highlight_ids": []
-        }
+        return {"ai_reply": "Error parsing query.", "min_time": 0}
+
+# --- 3. THE ROUTER ---
+def route_and_process(user_prompt: str, risk_data: list):
+    """
+    Decides if the user wants to CONFIGURE or QUERY.
+    """
+    system_instructions = """
+    Classify intent:
+    1. ACTION: Change settings, start fire, move map. (e.g. "Set wind 50", "Go to Dallas")
+    2. QUERY: Ask about data/safety. (e.g. "Who is in danger?", "Hospitals nearby")
+    
+    Output JSON: { "intent": "ACTION" } or { "intent": "QUERY" }
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": system_instructions}, {"role": "user", "content": user_prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.0
+        )
+        intent = json.loads(response.choices[0].message.content).get("intent", "QUERY")
+        
+        if intent == "ACTION":
+            params = get_ai_parameters(user_prompt)
+            return {"type": "action", "payload": params}
+        else:
+            # We don't send risk_data anymore, just the prompt
+            filters = analyze_query_intent(user_prompt)
+            return {"type": "knowledge", "payload": filters}
+
+    except Exception as e:
+        return {"type": "error", "message": str(e)}

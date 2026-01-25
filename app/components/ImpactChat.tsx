@@ -1,125 +1,138 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Clock, PlusSquare, Zap, FireExtinguisher, GraduationCap, Building2, Loader2, Volume2 } from 'lucide-react'; // Added Volume2 for future voice
+import { Send, Bot, User, Activity, PlusSquare, GraduationCap, Building2, FireExtinguisher, Loader2 } from 'lucide-react';
 
 interface ImpactChatProps {
-  riskReport: any[]; 
+  riskReport: any[];
+  onUpdateParams: (params: any) => void;
+  onUpdateLocation: (lat: number, lon: number) => void;
+  // UPDATE: This function signature now accepts overrides
+  onTriggerSim: (overrideParams?: any, forceQueue?: boolean) => void; 
+  isMapLoading: boolean;
 }
 
-interface Message {
-  role: 'user' | 'bot';
-  text: string;
-  ids?: number[]; // IDs to highlight
-}
-
-export default function ImpactChat({ riskReport }: ImpactChatProps) {
+export default function ImpactChat({ 
+  riskReport, 
+  onUpdateParams, 
+  onUpdateLocation, 
+  onTriggerSim,
+  isMapLoading 
+}: ImpactChatProps) {
+  
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'bot', text: 'Intelligence Core Online. I have read the current impact report. You can ask me specific questions like "Is Rock Prairie Elementary safe?" or "What hits in the next hour?"' }
+  const [messages, setMessages] = useState<any[]>([
+    { role: 'bot', text: 'Command Hub Online.' }
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    
     const userMsg = input;
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setInput('');
     setLoading(true);
 
     try {
-      // --- RAG: SEND DATA TO AI ---
-      const res = await fetch('http://127.0.0.1:8000/query-impact', {
+      const res = await fetch('http://127.0.0.1:8000/unified-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            prompt: userMsg,
-            risk_data: riskReport // <--- SENDING THE "DATABASE"
-        })
+        body: JSON.stringify({ prompt: userMsg, risk_data: [] })
       });
-      
       const data = await res.json();
-      const aiResponse = data.response;
 
-      setMessages(prev => [...prev, { 
-          role: 'bot', 
-          text: aiResponse.answer, 
-          ids: aiResponse.highlight_ids 
-      }]);
+      if (data.type === 'action') {
+        const params = data.payload;
+        
+        // 1. Update UI State (Visual only)
+        onUpdateParams(params);
+        
+        let didMove = false;
+        if (params.originLat && params.originLon) {
+            onUpdateLocation(params.originLat, params.originLon);
+            didMove = true;
+        }
+
+        setMessages(prev => [...prev, { 
+            role: 'bot', 
+            text: didMove ? "Relocating sector. Simulation queued..." : "Parameters updated. Re-running model...", 
+            isAction: true 
+        }]);
+
+        // 2. CRITICAL FIX: Pass new params DIRECTLY to the simulator.
+        // We also pass 'didMove' as 'forceQueue'. 
+        // If we moved, we force the queue to wait, even if map loading hasn't started yet.
+        onTriggerSim(params, didMove); 
+
+      } else {
+        // ... (Knowledge logic remains same) ...
+        const filters = data.payload;
+        const results = riskReport.filter(item => {
+            const t = parseFloat(item.timeToImpact);
+            const matchesTime = t >= (filters.min_time || 0) && t <= (filters.max_time || 999);
+            const matchesType = (filters.asset_types?.length > 0) ? filters.asset_types.includes(item.type) : true;
+            const matchesName = filters.name_query ? item.name.toLowerCase().includes(filters.name_query.toLowerCase()) : true;
+            return matchesTime && matchesType && matchesName;
+        });
+        
+        let finalReply = data.payload.ai_reply;
+        if (results.length === 0) finalReply = "No assets found matching criteria.";
+        else if (results.length > 0) finalReply = `Found ${results.length} matches.`;
+
+        setMessages(prev => [...prev, { role: 'bot', text: finalReply, results: results }]);
+      }
 
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'bot', text: "Uplink failed. Unable to query backend." }]);
+      console.error(err);
+      setMessages(prev => [...prev, { role: 'bot', text: "System Error." }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Helper to find specific items in the report for display
-  const getReferencedItems = (ids?: number[]) => {
-      if (!ids || ids.length === 0) return [];
-      return riskReport.filter(r => ids.includes(r.id));
-  };
-
+  // ... (Render matches previous step) ...
   return (
-    <div className="flex flex-col h-full bg-[#05050a] rounded-xl border border-white/10 overflow-hidden animate-in fade-in">
-      
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+    // ... (Your existing JSX)
+    <div className="flex flex-col h-full bg-[#05050a] border-t border-white/10">
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
         {messages.map((m, idx) => (
-          <div key={idx} className={`flex flex-col gap-2 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-            
+          <div key={idx} className={`flex flex-col gap-1 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
             <div className={`max-w-[90%] p-3 rounded-xl text-xs leading-relaxed shadow-lg ${m.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-slate-800 text-slate-300 rounded-bl-none border border-white/5'}`}>
-              <div className="flex items-center justify-between mb-1 opacity-50 font-bold uppercase tracking-wider text-[9px]">
-                <span className="flex items-center gap-2">{m.role === 'user' ? <User size={10}/> : <Bot size={10}/>} {m.role === 'user' ? 'COMMANDER' : 'SYSTEM'}</span>
-                {m.role === 'bot' && <Volume2 size={10} className="hover:text-white cursor-pointer"/>} {/* Future Voice Trigger */}
-              </div>
-              {m.text}
+               {m.isAction && <div className="flex items-center gap-1 text-[9px] font-bold text-emerald-400 mb-1 border-b border-white/10 pb-1"><Activity size={10}/> EXECUTING SEQUENCE</div>}
+               {m.text}
             </div>
-
-            {/* DYNAMIC DATA CARDS */}
-            {/* The AI told us which IDs are relevant. We fetch them from the prop to display cards. */}
-            {m.ids && m.ids.length > 0 && (
-              <div className="w-full bg-white/5 border border-white/10 rounded-lg p-1 space-y-1">
-                {getReferencedItems(m.ids).map((item, i) => (
-                  <div key={i} className="flex items-center justify-between p-2 hover:bg-white/5 rounded transition-colors group cursor-default">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-1.5 rounded bg-black/40 border border-white/10 text-slate-400 group-hover:text-white group-hover:border-white/30 transition-all`}>
-                        {item.type === 'medical' ? <PlusSquare size={14}/> : 
-                         item.type === 'power' ? <Zap size={14}/> :
-                         item.type === 'school' ? <GraduationCap size={14}/> : <Building2 size={14}/>}
+            
+            {m.results && m.results.length > 0 && (
+              <div className="w-[90%] bg-white/5 border border-white/10 rounded-lg p-1 space-y-1">
+                {m.results.slice(0, 5).map((item: any, i: number) => (
+                   <div key={i} className="flex items-center justify-between p-2 hover:bg-white/5 rounded transition-colors">
+                      <div className="flex items-center gap-2">
+                         <div className="text-slate-400">
+                           {item.type === 'medical' ? <PlusSquare size={12}/> : <Building2 size={12}/>}
+                         </div>
+                         <div className="text-[10px] text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div>
                       </div>
-                      <div>
-                        <div className="text-[11px] font-bold text-slate-200 group-hover:text-blue-300 transition-colors">{item.name}</div>
-                        <div className="text-[9px] text-slate-500 uppercase tracking-wider">{item.type} Asset</div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end">
-                       <span className="text-[10px] font-bold text-red-400 font-mono">T+{item.timeToImpact}H</span>
-                    </div>
-                  </div>
+                      <span className="text-[9px] font-mono text-red-400">T+{item.timeToImpact}h</span>
+                   </div>
                 ))}
               </div>
             )}
           </div>
         ))}
-        {loading && <div className="flex items-center gap-2 p-3 bg-slate-800/50 rounded-xl w-fit"><Loader2 size={14} className="animate-spin text-blue-400"/><span className="text-[10px] text-slate-400 animate-pulse">Analyzing vector data...</span></div>}
+        {loading && <div className="flex items-center gap-2 p-3"><Loader2 size={12} className="animate-spin text-slate-500"/><span className="text-[10px] text-slate-500">Processing...</span></div>}
         <div ref={scrollRef}></div>
       </div>
 
-      <div className="p-3 bg-[#0B1121] border-t border-white/10 flex gap-2">
+      <div className="p-3 bg-[#0B1121] flex gap-2">
         <input 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="Ask about specific assets (e.g. 'Is Rock Prairie impacted?')"
-          className="flex-1 bg-[#05050a] border border-white/10 rounded-lg px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-slate-600"
+          placeholder="Type a command..."
+          className="flex-1 bg-[#0f172a] border border-white/10 rounded-lg px-3 py-3 text-xs text-white focus:outline-none"
         />
-        <button onClick={handleSend} disabled={loading} className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-lg transition-colors shadow-lg shadow-blue-900/20">
-          <Send size={16} />
-        </button>
+        <button onClick={handleSend} disabled={loading || isMapLoading} className="bg-blue-600 p-3 rounded-lg text-white disabled:opacity-50"><Send size={16}/></button>
       </div>
     </div>
   );
