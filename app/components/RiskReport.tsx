@@ -27,7 +27,7 @@ export default function RiskReport({
 
   // Categories config
   const categories = [
-    { id: 'medical', label: 'Medical', icon: <PlusSquare size={12}/> },
+    { id: 'medical', label: 'Hospital/Clinic', icon: <PlusSquare size={12}/> },
     { id: 'power', label: 'Power', icon: <Zap size={12}/> },
     { id: 'school', label: 'Schools', icon: <GraduationCap size={12}/> },
     { id: 'response', label: 'Fire/Police', icon: <FireExtinguisher size={12}/> },

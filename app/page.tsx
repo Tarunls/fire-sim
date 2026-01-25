@@ -1,17 +1,17 @@
 "use client";
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import Map, { NavigationControl, Source, Layer, Marker, Popup } from 'react-map-gl';
+import Map, { NavigationControl, Source, Layer, Marker, Popup, MapRef } from 'react-map-gl';
 import { 
   AlertTriangle, Play, Pause, Loader2, Zap, RefreshCw, 
-  Building2, LayoutDashboard, FileWarning, FireExtinguisher,
-  PlusSquare, GraduationCap, Globe, Cpu, Server
+  Building2, LayoutDashboard, FileWarning, FireExtinguisher, MessageSquare,
+  PlusSquare, GraduationCap, Globe, Cpu, Compass, Thermometer, Droplets, Mountain, Waves, Clock, Terminal
 } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 
-// --- IMPORT COMPONENTS ---
+import ImpactChat from './components/ImpactChat';
 import RiskReport from './components/RiskReport'; 
 import LocationPanel from './components/LocationPanel'; 
-import ControlPanel from './components/ControlPanel'; // <--- NEW IMPORT
+import ControlPanel from './components/ControlPanel'; 
 
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -19,9 +19,13 @@ const RAW_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 const MAPBOX_TOKEN = RAW_TOKEN.replace(/"/g, ''); 
 
 export default function IncidentCommander() {
+  const mapRef = useRef<MapRef>(null);
+  const animationRef = useRef<NodeJS.Timeout | null>(null);
+
   // --- UI STATE ---
-  const [activeTab, setActiveTab] = useState<'controls' | 'impact' | 'location'>('controls');
-  const [showAllLandmarks, setShowAllLandmarks] = useState(false);
+  const [activeTab, setActiveTab] = useState<'controls' | 'impact' | 'location' | 'chat'>('controls');
+  // FIX 1: Default to TRUE so user sees data initially, or handle in location update
+  const [showAllLandmarks, setShowAllLandmarks] = useState(false); 
   
   // --- LOCATION STATE ---
   const [viewport, setViewport] = useState({ latitude: 38.5, longitude: -121.5, zoom: 11 });
@@ -29,14 +33,46 @@ export default function IncidentCommander() {
   const [pendingLocation, setPendingLocation] = useState<{lat: number, lon: number} | null>(null);
   const [isSelectingOnMap, setIsSelectingOnMap] = useState(false);
 
+  // --- GET USER LOCATION ---
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          console.log("📍 GPS Success:", latitude, longitude);
+          handleLocationUpdate(latitude, longitude);
+        },
+        (error) => console.warn("Geolocation denied. Defaulting to Sacramento.")
+      );
+    }
+  }, []);
+
   const handleLocationUpdate = (lat: number, lon: number) => {
-    setViewport(prev => ({ ...prev, latitude: lat, longitude: lon }));
-    setLandmarks([]); setHistory([]); setRiskReport([]); 
+    // A. Update Logic Center
     setSimulationOrigin({ lat, lon });
-    setPendingLocation(null); setIsSelectingOnMap(false); setActiveTab('controls');
+    
+    // B. Move Camera (Standard State Update)
+    setViewport(prev => ({ ...prev, latitude: lat, longitude: lon, zoom: 12 }));
+
+    // C. Reset Data
+    setLandmarks([]); 
+    setHistory([]); 
+    setRiskReport([]); 
+    setPendingLocation(null); 
+    setIsSelectingOnMap(false); 
+    setActiveTab('controls');
+
+    // FIX 2: FORCE ICONS TO SHOW
+    // When we move to a new location, show the assets immediately so the map isn't empty
+    setShowAllLandmarks(true); 
+
+    // D. Fly Animation (Optional polish, but state update above handles the move)
+    if (mapRef.current) {
+        mapRef.current.flyTo({ center: [lon, lat], zoom: 12, duration: 2000 });
+    }
   };
 
-  // --- SEARCH & FILTER ---
+  // --- FILTER & SIM PARAMS ---
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set(['medical', 'power', 'response', 'school', 'civic', 'unknown']));
   const toggleFilter = (type: string) => {
@@ -45,7 +81,6 @@ export default function IncidentCommander() {
     setActiveFilters(newFilters);
   };
 
-  // --- SIMULATION PARAMS ---
   const [simParams, setSimParams] = useState({
     windSpeed: 50, windDir: 'NW', moisture: 10, humidity: 20, temperature: 95, slope: 15, duration: 24 
   });
@@ -56,7 +91,6 @@ export default function IncidentCommander() {
   const [currentFrame, setCurrentFrame] = useState(0); 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isCalculatingRisks, setIsCalculatingRisks] = useState(false);
-  const animationRef = useRef<NodeJS.Timeout | null>(null);
   const [landmarks, setLandmarks] = useState<any[]>([]);
   const [riskReport, setRiskReport] = useState<any[]>([]); 
   const [loadingMapData, setLoadingMapData] = useState(false);
@@ -82,7 +116,7 @@ export default function IncidentCommander() {
         const data = await response.json();
         const processed = data.elements.map((node: any) => {
           let type = "unknown"; let priority = 0;
-          if (node.tags.amenity === "hospital" || node.tags.healthcare === "hospital") { type = "medical"; priority = 10; }
+          if ((node.tags.amenity === "hospital" || node.tags.healthcare === "hospital") || (node.tags.amenity === "clinic")) { type = "medical"; priority = 10; }
           else if (node.tags.power === "substation" || node.tags.power === "generator") { type = "power"; priority = 8; }
           else if (node.tags.amenity === "fire_station") { type = "response"; priority = 9; }
           else if (node.tags.amenity === "school") { type = "school"; priority = 5; }
@@ -98,8 +132,7 @@ export default function IncidentCommander() {
     fetchInfrastructure();
   }, [simulationOrigin]);
 
-  // --- HELPER: Render Icons ---
-  const getLandmarkIcon = (type: string, size: number = 16) => {
+  const getLandmarkIcon = (type: string, size: number = 18) => {
     switch (type) {
       case 'medical': return <PlusSquare size={size} />;
       case 'power': return <Zap size={size} />;
@@ -109,7 +142,6 @@ export default function IncidentCommander() {
     }
   };
 
-  // --- FILTER & RISK LOGIC ---
   const { filteredMarkers, filteredRisks } = useMemo(() => {
     const mapSource = showAllLandmarks ? landmarks : riskReport;
     const filterFn = (item: any) => {
@@ -139,7 +171,12 @@ export default function IncidentCommander() {
       const report = Object.values(impactMap).sort((a: any, b: any) => parseFloat(a.timeToImpact) - parseFloat(b.timeToImpact));
       setRiskReport(report);
       setIsCalculatingRisks(false); 
-      if (report.length > 0) { setActiveTab('impact'); setShowAllLandmarks(false); }
+      // If risks found, switch to Impact tab and show risks. 
+      // If no risks, we stay on 'showAll' or whatever the user had.
+      if (report.length > 0) { 
+          setActiveTab('impact'); 
+          setShowAllLandmarks(false); // Focus on risks
+      }
     }, 400); 
   };
 
@@ -157,7 +194,16 @@ export default function IncidentCommander() {
       const res = await fetch('http://127.0.0.1:8000/parse-command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) });
       return res.json();
     },
-    onSuccess: (data) => { setSimParams(prev => ({ ...prev, ...data.params })); mutation.mutate({ ...simParams, ...data.params }); setAiPrompt(''); }
+    onSuccess: (data) => { 
+      setSimParams(prev => ({ ...prev, ...data.params })); 
+      if (data.params.originLat && data.params.originLon) {
+         handleLocationUpdate(data.params.originLat, data.params.originLon);
+         mutation.mutate({ ...simParams, ...data.params, originLat: data.params.originLat, originLon: data.params.originLon });
+      } else {
+         mutation.mutate({ ...simParams, ...data.params });
+      }
+      setAiPrompt(''); 
+    }
   });
   const handleAICommand = () => { if (aiPrompt.trim()) aiMutation.mutate(aiPrompt); };
 
@@ -177,26 +223,35 @@ export default function IncidentCommander() {
   }, [history, currentFrame]);
 
   const heatmapLayer: any = { id: 'fire-heat', type: 'heatmap', paint: { 'heatmap-weight': ['get', 'intensity'], 'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.1, 'rgba(50,0,0,0.5)', 0.3, 'rgb(100,0,0)', 0.6, 'rgb(255,100,0)', 1, 'rgb(255,255,200)'], 'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 2, 9, 15, 11, 25, 15, 50], 'heatmap-opacity': 0.80 } };
-  const compassGrid = ['NW', 'N', 'NE', 'W', '', 'E', 'SW', 'S', 'SE'];
-  const onMapClick = (evt: any) => { if (activeTab === 'location' || isSelectingOnMap) { const { lng, lat } = evt.lngLat; setPendingLocation({ lat, lon: lng }); } };
+  
+  const onMapClick = (evt: any) => { 
+    if (activeTab === 'location' || isSelectingOnMap) { 
+      const { lng, lat } = evt.lngLat; 
+      setPendingLocation({ lat, lon: lng }); 
+    } 
+  };
 
   return (
-    <main className="bg-[#0a0e1a] text-slate-200 font-sans selection:bg-orange-500/30" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+    <main className="bg-[#0a0e1a] text-slate-200 font-sans selection:bg-orange-500/30" style={{ display: 'grid', gridTemplateColumns: '480px 1fr', height: '100vh', width: '100vw', overflow: 'hidden' }}>
       <aside className="relative flex flex-col h-full bg-[#0B1121] border-r border-white/5 shadow-2xl z-20 overflow-hidden">
         <div className="p-6 border-b border-white/10 bg-[#0f172a]/80 backdrop-blur-sm relative z-10">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2.5 bg-gradient-to-br from-orange-500/20 to-red-600/20 rounded-lg border border-orange-500/30"><AlertTriangle className="text-orange-500" size={22} /></div>
             <h1 className="text-lg font-black tracking-tight text-white leading-none">INCIDENT<br/><span className="text-orange-500">COMMANDER</span></h1>
           </div>
-          <div className="flex bg-black/40 p-1 rounded-lg">
-            <button onClick={() => setActiveTab('controls')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all flex items-center justify-center gap-2 ${activeTab === 'controls' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}><LayoutDashboard size={14}/> CONTROLS</button>
-            <button onClick={() => setActiveTab('impact')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all flex items-center justify-center gap-2 ${activeTab === 'impact' ? 'bg-red-900/50 text-red-200 shadow-sm border border-red-500/20' : 'text-slate-500 hover:text-slate-300'}`}><FileWarning size={14}/> IMPACT {riskReport.length > 0 && <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full animate-bounce">{riskReport.length}</span>}</button>
-            <button onClick={() => setActiveTab('location')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all flex items-center justify-center gap-2 ${activeTab === 'location' ? 'bg-blue-900/50 text-blue-200 shadow-sm border border-blue-500/20' : 'text-slate-500 hover:text-slate-300'}`}><Globe size={14}/> LOCATE</button>
+          
+          <div className="grid grid-cols-4 gap-1 bg-black/40 p-1 rounded-lg">
+            <button onClick={() => setActiveTab('controls')} className={`py-2 text-[10px] font-bold rounded-md transition-all flex flex-col md:flex-row items-center justify-center gap-1 ${activeTab === 'controls' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}><LayoutDashboard size={14}/> <span>CONTROLS</span></button>
+            <button onClick={() => setActiveTab('impact')} className={`py-2 text-[10px] font-bold rounded-md transition-all flex flex-col md:flex-row items-center justify-center gap-1 ${activeTab === 'impact' ? 'bg-red-900/50 text-red-200 shadow-sm border border-red-500/20' : 'text-slate-500 hover:text-slate-300'}`}>
+                <FileWarning size={14}/> <span>IMPACT</span>
+                {riskReport.length > 0 && <span className="absolute top-0 right-0 -mt-1 -mr-1 bg-red-500 text-white text-[9px] px-1 rounded-full">{riskReport.length}</span>}
+            </button>
+            <button onClick={() => setActiveTab('location')} className={`py-2 text-[10px] font-bold rounded-md transition-all flex flex-col md:flex-row items-center justify-center gap-1 ${activeTab === 'location' ? 'bg-blue-900/50 text-blue-200 shadow-sm border border-blue-500/20' : 'text-slate-500 hover:text-slate-300'}`}><Globe size={14}/> <span>LOCATE</span></button>
+            <button onClick={() => setActiveTab('chat')} className={`py-2 text-[10px] font-bold rounded-md transition-all flex flex-col md:flex-row items-center justify-center gap-1 ${activeTab === 'chat' ? 'bg-emerald-900/50 text-emerald-200 shadow-sm border border-emerald-500/20' : 'text-slate-500 hover:text-slate-300'}`}><MessageSquare size={14}/> <span>INTEL</span></button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10 custom-scrollbar">
-          {/* --- TAB 1: CONTROLS --- */}
           {activeTab === 'controls' && (
             <ControlPanel 
               simParams={simParams} setSimParams={setSimParams} 
@@ -205,7 +260,10 @@ export default function IncidentCommander() {
             />
           )}
 
-          {/* --- TAB 2: IMPACT REPORT --- */}
+          {activeTab === 'chat' && (
+            <ImpactChat riskReport={riskReport} />
+          )}
+
           {activeTab === 'impact' && (
             <RiskReport 
               risks={filteredRisks} totalCount={riskReport.length} showAll={showAllLandmarks} 
@@ -215,7 +273,6 @@ export default function IncidentCommander() {
             />
           )}
 
-          {/* --- TAB 3: LOCATION --- */}
           {activeTab === 'location' && (
             <LocationPanel 
               currentLat={viewport.latitude} currentLon={viewport.longitude} 
@@ -233,7 +290,17 @@ export default function IncidentCommander() {
       </aside>
 
       <section className="relative h-full w-full bg-black z-10">
-        <Map initialViewState={viewport} onMove={evt => setViewport(evt.viewState)} onClick={onMapClick} style={{ width: '100%', height: '100%' }} mapStyle="mapbox://styles/mapbox/dark-v11" mapboxAccessToken={MAPBOX_TOKEN} cursor={isSelectingOnMap ? 'crosshair' : 'auto'}>
+        <Map 
+          ref={mapRef} 
+          // FIX 3: CONTROLLED MAP MODE
+          {...viewport} // Pass all viewport props (latitude, longitude, zoom) directly
+          onMove={evt => setViewport(evt.viewState)} 
+          onClick={onMapClick} 
+          style={{ width: '100%', height: '100%' }} 
+          mapStyle="mapbox://styles/mapbox/dark-v11" 
+          mapboxAccessToken={MAPBOX_TOKEN} 
+          cursor={isSelectingOnMap ? 'crosshair' : 'auto'}
+        >
           {pendingLocation && (
             <Popup latitude={pendingLocation.lat} longitude={pendingLocation.lon} closeButton={false} closeOnClick={false} anchor="bottom" offset={10}>
               <div className="p-2 bg-[#0a0e1a] rounded text-white min-w-[150px]">
