@@ -1,5 +1,11 @@
 # Cinder Control
 
+https://youtu.be/NebNnWuZCJo
+
+
+https://devpost.com/software/fsim
+
+
 Cinder Control is a decision-support dashboard that abstracts complex spatial computing into a conversational partner for incident commanders and first responders.
 
 ## 🌲 Inspiration
