@@ -1,63 +1,43 @@
 # Cinder Control
 
-https://youtu.be/NebNnWuZCJo
+[![Watch the demo](https://img.youtube.com/vi/NebNnWuZCJo/maxresdefault.jpg)](https://youtu.be/NebNnWuZCJo)
 
+**[Watch the demo](https://youtu.be/NebNnWuZCJo)** · **[Devpost writeup](https://devpost.com/software/fsim)**
 
-https://devpost.com/software/fsim
+Cinder Control turns wildfire response into a conversation. Instead of static maps and spreadsheets, it gives incident commanders and first responders a live dashboard that predicts where a fire is heading, what it's about to hit, and how to get people out of the way — all through voice or text.
 
+Built solo in 36 hours at TAMUHack 2026. Took 2nd place and Best Solo Project.
 
-Cinder Control is a decision-support dashboard that abstracts complex spatial computing into a conversational partner for incident commanders and first responders.
+## Why I built this
 
-## 🌲 Inspiration
-When I was in California when I was little, wildfires were pretty prevalent. I wasn't too aware of what caused them or how they spread, but it feels like every year I've heard another tale of a wildfire demolishing entire cities - and in some cases people aren't even aware they are coming. My hope is that with Cinder Control knowledge and awareness of Wildfires, as well as responding to them, becomes a more intuitive and easy to access process.
+I grew up around wildfire season in California. As a kid I never understood how fast these things moved or why people sometimes didn't see them coming until it was too late. That stuck with me. Cinder Control is my attempt at making the tools that track and respond to wildfires feel less like specialized GIS software and more like something anyone in an emergency operations center could pick up and use in the first five minutes.
 
-## 🔥 What it does
-Cinder Control is a dashboard that allows accurate tracking and predictions of how a fire will spread across a certain area, what landmarks will be affected by it, and several tools to help first responders, firefighters, and those in the line of fire help understand what they can do.
+## What it does
 
-* **Conversational Command:** Users are able to set environmental parameters through the dashboard, or through voice. The layout is also mobile friendly for anyone who may need it on the go.
-* **HPC Simulation:** Using a Python Cellular Automata Simulation, it predicts the spread of wildfire over windows of up to 96 hours.
-* **Infrastructure Ingestion:** The systems figure out what infrastructure nearby will be "ingested" by the fire, and create warnings of the estimated time that will happen.
-* **Logistics & Routing:** The system can help plan routes between these points to help evacuation or first responder efforts.
+- **Conversational control** — set fire parameters and query the system by typing or by voice, on desktop or mobile.
+- **Fire spread simulation** — a parallelized cellular automata model in Python projects wildfire spread up to 96 hours out.
+- **Infrastructure risk detection** — cross-references the simulation against real infrastructure data to flag what's in the fire's path and roughly when it'll get there.
+- **Evacuation routing** — generates evacuation and access routes around the predicted burn area.
 
-## 🏗️ How we built it
-The main webapp was built on a Next.js framework, using React and Typescript. Gemini was leveraged to create some of the stylistic choices for the UI.
+## How it's built
 
-The backend consists of a FastAPI endpoint runnin with Python, as well as OpenAI to parse natural language input. Python also used a parallelized cellular automata model, basically creating cells for the fire to spread using certain conditions.
+The frontend is Next.js, React, and TypeScript, with Gemini used to help shape some of the UI's visual language. The backend is a FastAPI service in Python running the cellular automata spread model, with OpenAI handling natural language parsing so the dashboard can be driven conversationally. Voice responses are synthesized with OpenAI and narrated through ElevenLabs. Mapping and geospatial context come from Mapbox, OpenStreetMap (via Overpass), and NOAA's National Weather Service API.
 
-Responses are created with OpenAI as well with ElevenLabs narration.
+## Running it locally
 
-Additional APIs leveraged were Mapbox, Overpass OpenStreetMap, and NOAA NWS.
+You'll need Node 18+, Python 3.9+, and a Mapbox public token.
 
-## 🚀 Getting Started
-
-To run Cinder Control locally, you will need to start both the Python backend and the Next.js frontend.
-
-### Prerequisites
-* Node.js (v18+)
-* Python (3.9+)
-* A Mapbox Public Token
-
-### 1. Backend Setup (Python)
-Navigate to your backend directory and install the necessary dependencies:
+**Backend**
 ```bash
-# Install dependencies
 pip install fastapi uvicorn numpy scipy pydantic openai python-dotenv
-
-# Start the server (defaulting to port 8000)
 uvicorn main:app --reload
 ```
 
-Navigate to the root directory and install the UI components:
-
-```
+**Frontend**
+```bash
 npm install
-
-# Create a .env.local file in the root and add your token:
-# NEXT_PUBLIC_MAPBOX_TOKEN=your_token_here
-
-# Run the development server
+# add NEXT_PUBLIC_MAPBOX_TOKEN=your_token_here to .env.local
 npm run dev
 ```
 
-The application will be available at http://localhost:3000
-
+The app runs at `http://localhost:3000`.
