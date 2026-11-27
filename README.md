@@ -4,9 +4,9 @@
 
 **[Watch the demo](https://youtu.be/NebNnWuZCJo)** · **[Devpost writeup](https://devpost.com/software/fsim)**
 
-Cinder Control turns wildfire response into a conversation. Instead of static maps and spreadsheets, it gives incident commanders and first responders a live dashboard that predicts where a fire is heading, what it's about to hit, and how to get people out of the way — all through voice or text.
+Cinder Control is a wildfire simulation prototype built to explore fire-spread scenarios through a map-based dashboard and voice or text. It combines a Python simulation with weather and infrastructure data to visualize modeled spread and nearby infrastructure.
 
-Built solo in 36 hours at TAMUHack 2026. Took 2nd place and Best Solo Project.
+Built solo in 36 hours at TAMUHack 2026. Earned **2nd Place in the NorthMark HPC Sponsor Track** and **Best Solo Project**. Its outputs are exploratory simulations demonstrated in a hackathon prototype.
 
 ## Why I built this
 
@@ -15,9 +15,9 @@ I grew up around wildfire season in California. As a kid I never understood how 
 ## What it does
 
 - **Conversational control** — set fire parameters and query the system by typing or by voice, on desktop or mobile.
-- **Fire spread simulation** — a parallelized cellular automata model in Python projects wildfire spread up to 96 hours out.
-- **Infrastructure risk detection** — cross-references the simulation against real infrastructure data to flag what's in the fire's path and roughly when it'll get there.
-- **Evacuation routing** — generates evacuation and access routes around the predicted burn area.
+- **Fire spread simulation** — a cellular automata model in Python explores spread scenarios using fuel, wind and slope.
+- **Infrastructure visualization** — cross-references simulated spread with infrastructure data to highlight nearby features.
+- **Routing demonstration** — generates example evacuation and access routes around the simulated burn area.
 
 ## How it's built
 
